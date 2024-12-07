@@ -69,52 +69,49 @@ async function getCompiledFiles(tempDir: string) {
 export const POST: APIRoute = async ({ request }) => {
   let tempDir = '';
   try {
-    // Create temp directory with unique id
+    // Create temp directory with a unique id
     const id = randomUUID();
-    tempDir = join(tmpdir(), `flutter-web-${id}`);
+    tempDir = join(tmpdir(), `flutter-compilation-${id}`);
     await mkdir(tempDir, { recursive: true });
 
     // Copy template project to temp directory
     const templateDir = join(process.cwd(), 'template');
     await cp(templateDir, tempDir, { recursive: true });
 
-    // Get files from request and their paths
-    const formData = await request.formData();
-    const files = formData.getAll("files") as File[];
-    const paths = formData.getAll("paths") as string[];
+    // Get JSON data from request
+    const json = await request.json();
+    const fileContent = Buffer.from(json.fileContent, 'base64');
+    const relativePath = json.path;
 
-    // Write files to appropriate locations
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const relativePath = paths[i];
-      const fullPath = join(tempDir, relativePath);
+    // Write file to appropriate location
+    const fullPath = join(tempDir, relativePath);
+    await mkdir(dirname(fullPath), { recursive: true });
+    await writeFile(fullPath, fileContent);
 
-      await mkdir(dirname(fullPath), { recursive: true });
-      const buffer = Buffer.from(await file.arrayBuffer());
-      await writeFile(fullPath, buffer);
-    }
+    // Run flutter pub get first
+    await execAsync('flutter pub get', { cwd: tempDir });
 
-    // Compile the code
-    const compileResult = await compileCode(tempDir);
+    // Run flutter build web
+    const buildResult = await compileCode(tempDir);
 
-    // Get the compiled files from the build/web directory
+    // Read compiled files
     const compiledFiles = await getCompiledFiles(tempDir);
-
-    console.log('Compiled files:', compiledFiles);
 
     // Cleanup
     await cleanupTempDir(tempDir);
 
     return new Response(JSON.stringify({
       success: true,
-      output: compileResult.stdout || "Compilation successful",
-      errors: compileResult.stderr || null,
-      hasIssues: compileResult.stderr?.length > 0,
-      compiledFiles: compiledFiles
+      compiledFiles,
+      output: buildResult.stdout,
+      errors: buildResult.stderr
     }), {
       status: 200,
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
       }
     });
 
@@ -132,7 +129,10 @@ export const POST: APIRoute = async ({ request }) => {
     }), {
       status: 500,
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
       }
     });
   }

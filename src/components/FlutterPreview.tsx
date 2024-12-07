@@ -13,14 +13,19 @@ export default function FlutterPreview({ dartCode }: FlutterPreviewProps) {
       setStatus('Compiling...');
       setIsPreviewVisible(false);
 
-      const formData = new FormData();
-      const mainDartBlob = new Blob([dartCode], { type: 'text/plain' });
-      formData.append('files', mainDartBlob, 'main.dart');
-      formData.append('paths', 'lib/main.dart');
-
+      // Convert dart code to base64
+      const base64Code = btoa(dartCode);
+      
       const response = await fetch('/api/flutter/compile.json', {
         method: 'POST',
-        body: formData
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          fileContent: base64Code,
+          path: 'lib/main.dart'
+        })
       });
 
       const result = await response.json();
@@ -81,8 +86,7 @@ export default function FlutterPreview({ dartCode }: FlutterPreviewProps) {
         console.error('Compilation failed:', result);
       }
     } catch (error) {
-      setStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      console.error('Compilation error:', error);
+      setStatus('Error: ' + (error instanceof Error ? error.message : String(error)));
     }
   }
 
