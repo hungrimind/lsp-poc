@@ -83,6 +83,9 @@ COPY --from=build /app/node_modules /app/node_modules
 COPY --from=build /app/dist /app/dist
 COPY --from=build /app/template /app/template
 
+# Pre-run flutter pub get in template directory
+RUN cd /app/template && flutter pub get
+
 ENV PORT=4321
 ENV HOST=0.0.0.0
 

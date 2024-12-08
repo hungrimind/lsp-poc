@@ -1,10 +1,30 @@
 import type { APIRoute } from "astro";
 import { exec } from "node:child_process";
-import { writeFile, mkdir, rm, cp } from "node:fs/promises";
+import { writeFile, mkdir, rm, cp, access } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
+import { mkdtempSync } from "node:fs";
+
+export interface TaskTiming {
+  task: string;
+  duration: number;
+}
+
+export async function measureTask<T>(taskName: string, task: () => Promise<T>, timings: TaskTiming[]): Promise<T> {
+  const start = performance.now();
+  try {
+    return await task();
+  } finally {
+    const end = performance.now();
+    timings.push({
+      task: taskName,
+      duration: Math.round((end - start) * 100) / 100 // Round to 2 decimal places
+    });
+  }
+}
 
 export const OPTIONS: APIRoute = async () => {
   return new Response(null, {
@@ -19,9 +39,9 @@ export const OPTIONS: APIRoute = async () => {
 
 const execAsync = promisify(exec);
 
-async function analyzeCode(tempDir: string) {
+async function analyzeCode(tempDir: string, filePath: string) {
   try {
-    return await execAsync('dart analyze', {
+    return await execAsync(`dart analyze .`, {
       cwd: tempDir,
       maxBuffer: 1024 * 1024 // Increase buffer size to 1MB
     });
@@ -44,42 +64,67 @@ async function cleanupTempDir(tempDir: string) {
   }
 }
 
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+interface FileToAnalyze {
+  path: string;
+  fileContent: string; // base64 encoded
+}
+
 export const POST: APIRoute = async ({ request }) => {
   let tempDir = '';
+  const timings: TaskTiming[] = [];
+  
   try {
-    // Create temp directory with a unique id
-    const id = randomUUID();
-    tempDir = join(tmpdir(), `dart-analysis-${id}`);
-    await mkdir(tempDir, { recursive: true });
+    // Create temp directory in memory (if available)
+    const id = await measureTask('Generate UUID', () => randomUUID(), timings);
+    const baseTmpDir = process.platform === 'linux' ? '/dev/shm' : tmpdir();
+    tempDir = join(baseTmpDir, `dart-analysis-${id}`);
+    await measureTask('Create temp directory', () => mkdir(tempDir, { recursive: true }), timings);
 
-    // Copy template project to temp directory
+    // Copy files from template
     const templateDir = join(process.cwd(), 'template');
-    await cp(templateDir, tempDir, { recursive: true });
+    await measureTask('Copy package files', async () => {
+      // Copy pubspec.yaml
+      await cp(join(templateDir, 'pubspec.yaml'), join(tempDir, 'pubspec.yaml'));
+      // Copy .dart_tool directory which contains package info
+      await cp(join(templateDir, '.dart_tool'), join(tempDir, '.dart_tool'), { recursive: true });
+    }, timings);
 
     // Get JSON data from request
-    const json = await request.json();
-    const fileContent = Buffer.from(json.fileContent, 'base64');
-    const relativePath = json.path;
+    const json = await measureTask('Parse request JSON', () => request.json(), timings);
+    const files: FileToAnalyze[] = Array.isArray(json) ? json : [json];
 
-    // Write file to appropriate location
-    const fullPath = join(tempDir, relativePath);
-    await mkdir(dirname(fullPath), { recursive: true });
-    await writeFile(fullPath, fileContent);
+    // Write all files
+    await measureTask('Write files', async () => {
+      for (const file of files) {
+        const fileContent = Buffer.from(file.fileContent, 'base64');
+        const fullPath = join(tempDir, file.path);
+        await mkdir(dirname(fullPath), { recursive: true });
+        await writeFile(fullPath, fileContent);
+      }
+    }, timings);
 
-    // Run flutter pub get first
-    await execAsync('flutter pub get', { cwd: tempDir });
-
-    // Run dart analyze with full output
-    const analyzeResult = await analyzeCode(tempDir);
+    // Run dart analyze on the directory
+    const analyzeResult = await measureTask('Run dart analyze', () => 
+      analyzeCode(tempDir, ''), timings);
 
     // Cleanup
-    await cleanupTempDir(tempDir);
+    await measureTask('Cleanup temp directory', () => cleanupTempDir(tempDir), timings);
 
     return new Response(JSON.stringify({
       success: true,
       output: analyzeResult.stdout || "No issues found",
       errors: analyzeResult.stderr || null,
-      hasIssues: analyzeResult.stderr?.length > 0 || analyzeResult.stdout?.includes('error')
+      hasIssues: analyzeResult.stderr?.length > 0 || analyzeResult.stdout?.includes('error'),
+      timings
     }), {
       status: 200,
       headers: {
@@ -93,13 +138,14 @@ export const POST: APIRoute = async ({ request }) => {
     console.error('Analysis error:', error);
     // Cleanup on error
     if (tempDir) {
-      await cleanupTempDir(tempDir);
+      await measureTask('Cleanup temp directory (error)', () => cleanupTempDir(tempDir), timings);
     }
 
     return new Response(JSON.stringify({
       success: false,
       error: error instanceof Error ? error.message : String(error),
-      details: error instanceof Error ? error.stack : undefined
+      details: error instanceof Error ? error.stack : undefined,
+      timings
     }), {
       status: 500,
       headers: {
