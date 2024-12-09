@@ -1,16 +1,25 @@
 import { FlutterProcess } from './flutter-process';
+import { CodeServerProcess } from './code-server-process';
 
 const PORT_START = 8000;
 let nextPort = PORT_START;
 
-const processes = new Map<string, FlutterProcess>();
-const jobStatuses = new Map<string, { 
-  status: string, 
-  compiledFiles?: Record<string, string>, 
-  port?: number, 
-  tempDir?: string,
-  lastAccessed?: number 
-}>();
+interface JobProcess {
+  flutter: FlutterProcess;
+  codeServer: CodeServerProcess;
+}
+
+interface JobStatus {
+  status: string;
+  compiledFiles?: Record<string, string>;
+  flutterPort?: number;
+  codeServerPort?: number;
+  tempDir?: string;
+  lastAccessed?: number;
+}
+
+const processes = new Map<string, JobProcess>();
+const jobStatuses = new Map<string, JobStatus>();
 
 const JOB_TIMEOUT = 1000 * 60 * 10; // 10 minutes
 
@@ -20,23 +29,42 @@ function getNextPort() {
 
 export async function startJob(jobId: string, tempDir: string): Promise<void> {
   console.log(`Starting job ${jobId}`);
-  const port = getNextPort();
-  const process = new FlutterProcess(tempDir, jobId, port);
-  processes.set(jobId, process);
-  jobStatuses.set(jobId, { status: 'starting', port, tempDir });
+  const flutterPort = getNextPort();
+  const codeServerPort = getNextPort();
+  
+  const flutterProcess = new FlutterProcess(tempDir, jobId, flutterPort);
+  const codeServerProcess = new CodeServerProcess(tempDir, jobId, codeServerPort);
+  
+  processes.set(jobId, { 
+    flutter: flutterProcess,
+    codeServer: codeServerProcess
+  });
+  
+  jobStatuses.set(jobId, { 
+    status: 'starting', 
+    flutterPort, 
+    codeServerPort,
+    tempDir 
+  });
   
   try {
-    await process.start();
+    await Promise.all([
+      flutterProcess.start(),
+      codeServerProcess.start()
+    ]);
+    
     jobStatuses.set(jobId, { 
       status: 'compiled',
-      port,
+      flutterPort,
+      codeServerPort,
       tempDir
     });
   } catch (error) {
     console.error('Process start error:', error);
     jobStatuses.set(jobId, { 
       status: 'error',
-      port,
+      flutterPort,
+      codeServerPort,
       tempDir
     });
     throw error;
@@ -48,15 +76,13 @@ export async function hotRestartJob(jobId: string): Promise<void> {
   if (!process) throw new Error('Process not found');
   
   const currentStatus = await getJobStatus(jobId);
-  if (!currentStatus?.port) throw new Error('Port not found');
+  if (!currentStatus?.flutterPort) throw new Error('Flutter port not found');
   
-  await process.hotRestart();
-  const compiledFiles = await process.getCompiledFiles();
+  await process.flutter.hotRestart();
+  
   jobStatuses.set(jobId, { 
-    status: 'compiled',
-    compiledFiles,
-    port: currentStatus.port,
-    tempDir: currentStatus.tempDir
+    ...currentStatus,
+    status: 'compiled'
   });
 }
 
@@ -79,7 +105,10 @@ export async function getRunningJobs() {
 export async function cleanupJob(jobId: string): Promise<void> {
   const process = processes.get(jobId);
   if (process) {
-    process.cleanup();
+    await Promise.all([
+      process.flutter.stop(),
+      process.codeServer.stop()
+    ]);
     processes.delete(jobId);
   }
   jobStatuses.delete(jobId);

@@ -3,14 +3,17 @@ import { getJobStatus, getRunningJobs } from '../../../utils/cluster-manager';
 
 export const POST: APIRoute = async ({ request }) => {
   try {
-    
     const { jobId } = await request.json();
     const jobStatus = await getJobStatus(jobId);
 
     return new Response(JSON.stringify({
       success: true,
       status: jobStatus?.status || 'not_found',
-      compiledFiles: jobStatus?.compiledFiles
+      compiledFiles: jobStatus?.compiledFiles,
+      urls: jobStatus ? {
+        flutter: `http://localhost:${jobStatus.flutterPort}`,
+        editor: `http://localhost:${jobStatus.codeServerPort}`
+      } : null
     }), {
       status: 200,
       headers: {

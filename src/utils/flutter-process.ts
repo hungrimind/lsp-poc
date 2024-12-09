@@ -1,6 +1,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import { join } from 'path';
 import fetch from 'node-fetch';
+import * as fs from 'fs';
 
 export class FlutterProcess {
   private process: ChildProcess | null = null;
@@ -129,13 +130,54 @@ export class FlutterProcess {
       throw new Error('Flutter process not running');
     }
 
+    // Check file content before restart
+    const filePath = join(this.tempDir, 'lib/main.dart');
+    try {
+      const content = fs.readFileSync(filePath, 'utf8');
+      console.log(`[Job ${this.jobId}] Current main.dart content:`, content);
+    } catch (error) {
+      console.error(`[Job ${this.jobId}] Error reading main.dart:`, error);
+      throw new Error('Could not read main.dart file');
+    }
+
     return new Promise((resolve, reject) => {
-      // Send 'R' to trigger hot restart
-      this.process?.stdin?.write('R\n');
+      let restartTimeout: NodeJS.Timeout;
+
+      const onData = (data: Buffer) => {
+        const output = data.toString();
+        console.log(`[Job ${this.jobId}] Flutter output:`, output);
+        if (output.includes('Restarted application')) {
+          clearTimeout(restartTimeout);
+          cleanup();
+          resolve();
+        }
+      };
+
+      const onError = (data: Buffer) => {
+        const error = data.toString();
+        console.error(`[Job ${this.jobId}] Flutter error:`, error);
+        if (error.includes('Error')) {
+          clearTimeout(restartTimeout);
+          cleanup();
+          reject(new Error(error));
+        }
+      };
+
+      const cleanup = () => {
+        this.process?.stdout?.removeListener('data', onData);
+        this.process?.stderr?.removeListener('data', onError);
+      };
+
+      this.process.stdout?.on('data', onData);
+      this.process.stderr?.on('data', onError);
+
+      console.log(`[Job ${this.jobId}] Sending hot restart command...`);
+      this.process.stdin?.write('R\n');
       
-      // You might want to implement proper detection of hot restart completion
-      // For now, we'll just wait a short time
-      setTimeout(resolve, 1000);
+      restartTimeout = setTimeout(() => {
+        cleanup();
+        resolve(); // Assume success after timeout
+      }, 5000);
     });
   }
 

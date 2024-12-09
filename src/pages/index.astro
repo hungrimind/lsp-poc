@@ -71,31 +71,15 @@ class _MyHomePageState extends State<MyHomePage> {
 ---
 
 <Layout>
-  <div class="container">
-    <h1>Flutter Web Compiler</h1>
+  <main>
     <FlutterEditor client:load initialCode={initialDartCode} />
-  </div>
+  </main>
 </Layout>
 
 <style>
-  .container {
-    padding: 2rem;
-    max-width: 1200px;
-    margin: 0 auto;
-  }
-
-  .editor-container {
-    margin: 1rem 0;
-  }
-
-  textarea {
-    width: 100%;
-    padding: 1rem;
-    font-family: monospace;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    white-space: pre;
-    overflow-wrap: normal;
-    overflow-x: scroll;
+  main {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
   }
 </style>

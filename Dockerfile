@@ -1,10 +1,19 @@
 # syntax = docker/dockerfile:1
 
 # Adjust NODE_VERSION as desired
-ARG NODE_VERSION=23.1.0
+ARG NODE_VERSION=20.10.0
 FROM node:${NODE_VERSION}-slim as base
 
 LABEL fly_launch_runtime="Astro"
+
+# Install code-server
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y \
+    curl \
+    git \
+    ca-certificates && \
+    curl -fsSL https://code-server.dev/install.sh | sh && \
+    rm -rf /var/lib/apt/lists/*
 
 # Astro app lives here
 WORKDIR /app
