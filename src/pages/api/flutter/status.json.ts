@@ -6,13 +6,17 @@ export const POST: APIRoute = async ({ request }) => {
     const { jobId } = await request.json();
     const jobStatus = await getJobStatus(jobId);
 
+    const editorUrl = jobStatus?.tempDir 
+      ? `/editor/${jobId}?folder=${encodeURIComponent(jobStatus.tempDir)}`
+      : `/editor/${jobId}`;
+
     return new Response(JSON.stringify({
       success: true,
       status: jobStatus?.status || 'not_found',
       compiledFiles: jobStatus?.compiledFiles,
       urls: jobStatus ? {
-        flutter: `http://localhost:${jobStatus.flutterPort}`,
-        editor: `http://localhost:${jobStatus.codeServerPort}`
+        flutter: `/flutter/${jobId}/`,
+        editor: editorUrl
       } : null
     }), {
       status: 200,

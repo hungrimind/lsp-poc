@@ -78,32 +78,32 @@ export class FlutterProcess {
         canvasKit,
         canvasKitWasm
       ] = await Promise.all([
-        fetch('http://localhost:8000/flutter.js')
+        fetch(`http://localhost:${this.port}/flutter.js`)
           .then(r => {
             console.log(`[Job ${this.jobId}] flutter.js fetch status: ${r.status}`);
             return r.text();
           }),
-        fetch('http://localhost:8000/main.dart.js')
+        fetch(`http://localhost:${this.port}/main.dart.js`)
           .then(r => {
             console.log(`[Job ${this.jobId}] main.dart.js fetch status: ${r.status}`);
             return r.text();
           }),
-        fetch('http://localhost:8000/manifest.json')
+        fetch(`http://localhost:${this.port}/manifest.json`)
           .then(r => {
             console.log(`[Job ${this.jobId}] manifest.json fetch status: ${r.status}`);
             return r.text();
           }),
-        fetch('http://localhost:8000/flutter_bootstrap.js')
+        fetch(`http://localhost:${this.port}/flutter_bootstrap.js`)
           .then(r => {
             console.log(`[Job ${this.jobId}] flutter_bootstrap.js fetch status: ${r.status}`);
             return r.text();
           }),
-        fetch('http://localhost:8000/canvaskit/canvaskit.js')
+        fetch(`http://localhost:${this.port}/canvaskit/canvaskit.js`)
           .then(r => {
             console.log(`[Job ${this.jobId}] canvaskit.js fetch status: ${r.status}`);
             return r.text();
           }),
-        fetch('http://localhost:8000/canvaskit/canvaskit.wasm')
+        fetch(`http://localhost:${this.port}/canvaskit/canvaskit.wasm`)
           .then(r => {
             console.log(`[Job ${this.jobId}] canvaskit.wasm fetch status: ${r.status}`);
             return r.arrayBuffer();

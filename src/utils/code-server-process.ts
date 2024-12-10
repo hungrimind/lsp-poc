@@ -1,7 +1,8 @@
 import { spawn, ChildProcess } from 'child_process';
 import { watch } from 'fs';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, dirname } from 'fs';
 import { join } from 'path';
+import { rgPath } from '@vscode/ripgrep';
 
 export class CodeServerProcess {
   private process: ChildProcess | null = null;
@@ -18,55 +19,81 @@ export class CodeServerProcess {
   async start(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        const mainDartPath = join(this.tempDir, 'lib/main.dart');
-        console.log(`[Job ${this.jobId}] Setting up file watcher for: ${mainDartPath}`);
+        console.log(`[CodeServer ${this.jobId}] Starting code-server on port ${this.port}`);
         
-        // Set up file watcher
-        watch(mainDartPath, (eventType, filename) => {
-          try {
-            const content = readFileSync(mainDartPath, 'utf8');
-            console.log(`[Job ${this.jobId}] File changed. New content:`, content);
-          } catch (error) {
-            console.error(`[Job ${this.jobId}] Error reading file after change:`, error);
+        // Create VS Code settings in workspace
+        const vscodeDir = `${this.tempDir}/.vscode`;
+        const settingsPath = `${vscodeDir}/settings.json`;
+        const settings = {
+          "files.exclude": {
+            ".dart_tool": true,
+            ".idea": true,
+            ".vscode-extensions": true,
+            ".vscode-server": true,
+            "build": true,
+            "web": true,
+            ".gitignore": true,
+            ".metadata": true,
+            ".vscode": true,
+            ".vscode-config": true,
+            "README.md": true,
+            ".vscod": true,
+            "pubspec.lock": true
           }
-        });
+        };
+        
+        try {
+          // Ensure .vscode directory exists
+          if (!existsSync(vscodeDir)) {
+            mkdirSync(vscodeDir, { recursive: true });
+          }
+          writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+        } catch (error) {
+          console.error('Failed to create VS Code settings:', error);
+        }
 
         this.process = spawn('code-server', [
           '--auth', 'none',
-          '--bind-addr', `0.0.0.0:${this.port}`,
+          '--bind-addr', `127.0.0.1:${this.port}`,
+          '--port', this.port.toString(),
           '--user-data-dir', `${this.tempDir}/.vscode-server`,
           '--extensions-dir', `${this.tempDir}/.vscode-extensions`,
           '--config', `${this.tempDir}/.vscode-config`,
+          '--disable-telemetry',
+          '--disable-update-check',
+          '--disable-workspace-trust',
+          '--disable-file-downloads',
           this.tempDir
         ], {
           cwd: this.tempDir,
+          env: {
+            ...process.env,
+            // Point to our installed ripgrep
+            VSCODE_RIPGREP_PATH: rgPath,
+            // Skip the ripgrep download
+            VSCODE_RIPGREP_SKIP: 'true'
+          }
         });
 
         this.process.stdout?.on('data', (data) => {
           const output = data.toString();
+          console.log(`[CodeServer ${this.jobId}] stdout:`, output);
           if (output.includes('HTTP server listening')) {
-            // Log initial file content
-            try {
-              const content = readFileSync(mainDartPath, 'utf8');
-              console.log(`[Job ${this.jobId}] Initial file content:`, content);
-            } catch (error) {
-              console.error(`[Job ${this.jobId}] Error reading initial file:`, error);
-            }
             resolve();
           }
         });
 
         this.process.stderr?.on('data', (data) => {
-          console.error(`[Job ${this.jobId}] code-server stderr: ${data}`);
+          console.error(`[CodeServer ${this.jobId}] stderr:`, data.toString());
         });
 
         this.process.on('error', (error) => {
-          console.error(`[Job ${this.jobId}] Process error:`, error);
+          console.error(`[CodeServer ${this.jobId}] Process error:`, error);
           reject(error);
         });
 
         this.process.on('exit', (code) => {
-          console.log(`[Job ${this.jobId}] Process exited with code: ${code}`);
+          console.log(`[CodeServer ${this.jobId}] Process exited with code: ${code}`);
           if (code !== 0) {
             reject(new Error(`Process exited with code ${code}`));
           }
@@ -95,7 +122,7 @@ export class CodeServerProcess {
   }
 
   getUrl(): string {
-    return `http://localhost:${this.port}`;
+    return `/editor/${this.jobId}?folder=${encodeURIComponent(this.tempDir)}`;
   }
 
   cleanup(): void {

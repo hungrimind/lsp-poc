@@ -6,13 +6,13 @@ export const GET: APIRoute = async ({ params, request }) => {
   const path = params.path || '';
   
   const jobStatus = await getJobStatus(jobId);
-  if (!jobStatus || !jobStatus.port) {
+  if (!jobStatus || !jobStatus.flutterPort) {
     return new Response('Job not found', { status: 404 });
   }
 
   try {
     const finalPath = Array.isArray(path) ? path.join('/') : path || 'index.html';
-    const response = await fetch(`http://localhost:${jobStatus.port}/${finalPath}`);
+    const response = await fetch(`http://localhost:${jobStatus.flutterPort}/${finalPath}`);
     
     if (!response.ok) {
       return new Response('File not found', { status: 404 });
