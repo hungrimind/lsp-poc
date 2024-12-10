@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import FlutterPreview from '../components/FlutterPreview';
+import FlutterEditor from '../components/FlutterEditor';
 
 // You might want to move this to a separate file
 const initialDartCode = `
@@ -54,7 +54,7 @@ class _MyHomePageState extends State<MyHomePage> {
           children: <Widget>[
             Text('You have pushed the button this many times:'),
             Text(
-              '\${_counter}',
+              '\$_counter',
               style: Theme.of(context).textTheme.headlineMedium,
             ),
           ],
@@ -71,37 +71,15 @@ class _MyHomePageState extends State<MyHomePage> {
 ---
 
 <Layout>
-  <div class="container">
-    <h1>Flutter Web Compiler</h1>
-    <div class="editor-container">
-      <textarea 
-        id="dartCode" 
-        rows="10" 
-        cols="50"
-        value={initialDartCode}
-      ></textarea>
-    </div>
-    
-    <FlutterPreview client:load dartCode={initialDartCode} />
-  </div>
+  <main>
+    <FlutterEditor client:load initialCode={initialDartCode} />
+  </main>
 </Layout>
 
 <style>
-  .container {
-    padding: 2rem;
-    max-width: 1200px;
-    margin: 0 auto;
-  }
-
-  .editor-container {
-    margin: 1rem 0;
-  }
-
-  textarea {
-    width: 100%;
-    padding: 1rem;
-    font-family: monospace;
-    border: 1px solid #ccc;
-    border-radius: 4px;
+  main {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
   }
 </style>

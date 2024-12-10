@@ -1,10 +1,19 @@
 # syntax = docker/dockerfile:1
 
 # Adjust NODE_VERSION as desired
-ARG NODE_VERSION=23.1.0
+ARG NODE_VERSION=20.10.0
 FROM node:${NODE_VERSION}-slim as base
 
 LABEL fly_launch_runtime="Astro"
+
+# Install code-server
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y \
+    curl \
+    git \
+    ca-certificates && \
+    curl -fsSL https://code-server.dev/install.sh | sh && \
+    rm -rf /var/lib/apt/lists/*
 
 # Astro app lives here
 WORKDIR /app
@@ -82,6 +91,9 @@ RUN which flutter && flutter --version
 COPY --from=build /app/node_modules /app/node_modules
 COPY --from=build /app/dist /app/dist
 COPY --from=build /app/template /app/template
+
+# Pre-run flutter pub get in template directory
+RUN cd /app/template && flutter pub get
 
 ENV PORT=4321
 ENV HOST=0.0.0.0
