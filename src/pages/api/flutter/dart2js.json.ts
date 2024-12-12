@@ -59,27 +59,10 @@ void main() {
     const bootstrapPath = join(tempDir, 'lib', 'bootstrap.dart');
     await writeFile(bootstrapPath, bootstrapCode);
 
-    // Create web/index.html with simpler initialization
-    const indexHTML = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A Flutter app">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Flutter Web</title>
-</head>
-<body>
-  <script src="flutter.js" defer></script>
-  <script src="dart_sdk.js"></script>
-  <script src="main.dart.js"></script>
-</body>
-</html>`;
+
 
     const webDir = join(tempDir, 'web');
     await mkdir(webDir, { recursive: true });
-    await writeFile(join(webDir, 'index.html'), indexHTML);
 
     // Create pubspec.yaml with minimal Flutter dependencies
     const pubspecContent = `
@@ -166,8 +149,7 @@ dependencies:
     console.log('Files in web directory:', webDirContents);
 
     // Read necessary files from web directory
-    const [indexReturn, flutterJs, canvasKitJs, canvasKitWasm] = await Promise.all([
-      readFile(join(webDir, 'index.html'), 'utf-8'),
+    const [flutterJs, canvasKitJs, canvasKitWasm] = await Promise.all([
       readFile(join(webDir, 'flutter.js'), 'utf-8'),
       readFile(join(webDir, 'canvaskit', 'canvaskit.js'), 'utf-8'),
       readFile(join(webDir, 'canvaskit', 'canvaskit.wasm'), 'base64')
@@ -177,7 +159,6 @@ dependencies:
     console.log('main.dart.js first 100 chars:', mainJs.substring(0, 100));
     console.log('dart_sdk.js first 100 chars:', sdkJs.substring(0, 100));
     console.log('flutter.js first 100 chars:', flutterJs.substring(0, 100));
-    console.log('index.html full:', indexReturn);
 
     // Process the JS to add module name explicitly
     const processedJs = mainJs.replace('define([', "define('dartpad_main', [");
@@ -190,7 +171,6 @@ dependencies:
         'canvaskit.js': canvasKitJs,
         'canvaskit.wasm': canvasKitWasm,
         'dart_sdk.js': sdkJs,
-        'index.html': indexReturn
       }
     };
   } catch (error: any) {

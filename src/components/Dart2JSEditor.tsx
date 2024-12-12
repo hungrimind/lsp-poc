@@ -9,14 +9,18 @@ export default function Dart2JSEditor({ initialCode }: Dart2JSEditorProps) {
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
-  async function updateFrameFile(code: string) {
+  async function updateFrameFile(files: Record<string, string>) {
     try {
       const response = await fetch("/api/flutter/update-frame.json", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ content: code }),
+        body: JSON.stringify({
+          flutterJs: files["flutter.js"],
+          dartSdkJs: files["dart_sdk.js"],
+          mainDartJs: files["main.dart.js"],
+        }),
       });
 
       if (!response.ok) {
@@ -27,7 +31,7 @@ export default function Dart2JSEditor({ initialCode }: Dart2JSEditorProps) {
       // Force iframe refresh by updating its src
       const iframe = document.querySelector("iframe");
       if (iframe) {
-        iframe.src = `/frame.html?t=${Date.now()}`; // Add timestamp to bypass cache
+        iframe.src = `/frame.html?t=${Date.now()}`; // Updated path
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
@@ -52,7 +56,7 @@ export default function Dart2JSEditor({ initialCode }: Dart2JSEditorProps) {
       const result = await response.json();
 
       if (result.success) {
-        updateFrameFile(result.files["index.html"]);
+        updateFrameFile(result.files);
       } else {
         setError(result.error || "Compilation failed");
       }
