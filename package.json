@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@flydotio/dockerfile": "^0.5.9",
-    "@types/node": "^22.10.1",
+    "@types/node": "^22.10.2",
     "@types/node-fetch": "^2.6.12"
   }
 }

@@ -1,11 +1,11 @@
 import type { APIRoute } from "astro";
 import { exec } from "node:child_process";
-import { writeFile, mkdir, rm, readFile, readdir } from "node:fs/promises";
-import { join, dirname } from "node:path";
-import { tmpdir } from "node:os";
-import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
+import { promisify } from "node:util";
 
 export interface TaskTiming {
   task: string;
@@ -30,13 +30,13 @@ const execAsync = promisify(exec);
 async function compileDart2JS(tempDir: string, fileContent: string) {
   try {
     console.log(`Setting up Flutter project in ${tempDir}`);
-    
+
     const templatePath = join(process.cwd(), 'template');
     await execAsync(`cp -r ${templatePath}/* ${tempDir}/`);
-    
+
     const mainDartPath = join(tempDir, 'lib', 'main.dart');
     await writeFile(mainDartPath, fileContent);
-    
+
     // Create bootstrap file
     const bootstrapCode = `
 import 'package:flutter/material.dart';
@@ -60,7 +60,7 @@ void main() {
     await writeFile(bootstrapPath, bootstrapCode);
 
     // Create web/index.html with simpler initialization
-    const indexHtml = `
+    const indexHTML = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -79,7 +79,7 @@ void main() {
 
     const webDir = join(tempDir, 'web');
     await mkdir(webDir, { recursive: true });
-    await writeFile(join(webDir, 'index.html'), indexHtml);
+    await writeFile(join(webDir, 'index.html'), indexHTML);
 
     // Create pubspec.yaml with minimal Flutter dependencies
     const pubspecContent = `
@@ -104,26 +104,26 @@ dependencies:
         FLUTTER_WEB: 'true'
       }
     });
-    
+
     // Find paths and list contents to debug
     const { stdout: dartPath } = await execAsync('which dart');
     const flutterBinPath = dirname(dartPath.trim());
     const dartSdkPath = join(flutterBinPath, 'cache', 'dart-sdk');
     const dartdevcPath = join(dartSdkPath, 'bin', 'snapshots', 'dartdevc.dart.snapshot');
-    
+
     const flutterWebSdkPath = join(flutterBinPath, 'cache', 'flutter_web_sdk');
     const kernelPath = join(flutterWebSdkPath, 'kernel');
-    
+
     // Copy Flutter web SDK files
     console.log('Copying Flutter web SDK files...');
     await execAsync(`cp -r ${flutterWebSdkPath}/canvaskit ${webDir}/`);
     await execAsync(`cp -r ${flutterWebSdkPath}/flutter_js/* ${webDir}/`);
-    
+
     // Copy SDK files
     const sdkPath = join(kernelPath, 'amd-canvaskit-sound/dart_sdk.js');
     console.log('Copying SDK from:', sdkPath);
     await execAsync(`cp ${sdkPath} ${webDir}/`);
-    
+
     // Use dart to run the dartdevc snapshot with Flutter web summary
     const command = `dart ${dartdevcPath} \
       --modules=amd \
@@ -134,9 +134,9 @@ dependencies:
       --packages=${join(tempDir, '.dart_tool/package_config.json')} \
       -o ${join(webDir, 'main.dart.js')} \
       ${bootstrapPath}`;
-    
+
     console.log('Running command:', command);
-    
+
     const result = await execAsync(command, {
       cwd: tempDir,
       maxBuffer: 1024 * 1024 * 50,
@@ -159,14 +159,15 @@ dependencies:
     const mainJs = await readFile(join(webDir, 'main.dart.js'), 'utf-8');
     console.log('\nSDK JS first 500 chars:', sdkJs.substring(0, 500));
     console.log('\nMain JS first 500 chars:', mainJs.substring(0, 500));
-    
+
     // Check if files exist
     console.log('\nChecking web directory contents...');
     const webDirContents = await readdir(webDir);
     console.log('Files in web directory:', webDirContents);
-    
+
     // Read necessary files from web directory
-    const [flutterJs, canvasKitJs, canvasKitWasm] = await Promise.all([
+    const [indexReturn, flutterJs, canvasKitJs, canvasKitWasm] = await Promise.all([
+      readFile(join(webDir, 'index.html'), 'utf-8'),
       readFile(join(webDir, 'flutter.js'), 'utf-8'),
       readFile(join(webDir, 'canvaskit', 'canvaskit.js'), 'utf-8'),
       readFile(join(webDir, 'canvaskit', 'canvaskit.wasm'), 'base64')
@@ -176,6 +177,7 @@ dependencies:
     console.log('main.dart.js first 100 chars:', mainJs.substring(0, 100));
     console.log('dart_sdk.js first 100 chars:', sdkJs.substring(0, 100));
     console.log('flutter.js first 100 chars:', flutterJs.substring(0, 100));
+    console.log('index.html full:', indexReturn);
 
     // Process the JS to add module name explicitly
     const processedJs = mainJs.replace('define([', "define('dartpad_main', [");
@@ -187,7 +189,8 @@ dependencies:
         'flutter.js': flutterJs,
         'canvaskit.js': canvasKitJs,
         'canvaskit.wasm': canvasKitWasm,
-        'dart_sdk.js': sdkJs
+        'dart_sdk.js': sdkJs,
+        'index.html': indexReturn
       }
     };
   } catch (error: any) {
@@ -210,19 +213,20 @@ async function cleanupTempDir(tempDir: string) {
 export const POST: APIRoute = async ({ request }) => {
   let tempDir = '';
   const timings: TaskTiming[] = [];
-  
+
   try {
     // Create temp directory
     const id = await measureTask('Generate UUID', () => randomUUID(), timings);
     const baseTmpDir = process.platform === 'linux' ? '/dev/shm' : tmpdir();
     tempDir = join(baseTmpDir, `dart2js-${id}`);
+    console.log('Temp directory:', tempDir);
     await measureTask('Create temp directory', () => mkdir(tempDir, { recursive: true }), timings);
 
     // Get file content from request
     const { fileContent } = await measureTask('Parse request JSON', () => request.json(), timings);
-    
+
     // Run dart2js compilation with the decoded content
-    const compileResult = await measureTask('Run dart2js', () => 
+    const compileResult = await measureTask('Run dart2js', () =>
       compileDart2JS(tempDir, Buffer.from(fileContent, 'base64').toString('utf-8')), timings);
 
     if (compileResult.stderr) {
